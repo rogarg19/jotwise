@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "OneNote AI",
-    "slug": "one-note-ai",
+    "name": "Fluxiary",
+    "slug": "fluxiary",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,8 +15,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "OneNote AI uses the microphone to turn your voice captures into note text.",
-        "NSSpeechRecognitionUsageDescription": "OneNote AI uses speech recognition to transcribe your voice captures."
+        "NSMicrophoneUsageDescription": "Fluxiary uses the microphone to turn your voice captures into note text.",
+        "NSSpeechRecognitionUsageDescription": "Fluxiary uses speech recognition to transcribe your voice captures."
       }
     },
     "android": {
@@ -35,8 +35,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow OneNote AI to use the microphone for voice notes.",
-          "speechRecognitionPermission": "Allow OneNote AI to transcribe voice notes.",
+          "microphonePermission": "Allow Fluxiary to use the microphone for voice notes.",
+          "speechRecognitionPermission": "Allow Fluxiary to transcribe voice notes.",
           "androidSpeechServicePackages": [
             "com.google.android.googlequicksearchbox"
           ]

@@ -56,7 +56,7 @@ type DbEntry = {
   summary: string;
 };
 
-const db = SQLite.openDatabaseSync('one-note-ai.db');
+const db = SQLite.openDatabaseSync('fluxiary.db');
 
 const colors = {
   ink: '#171717',
@@ -441,7 +441,7 @@ export default function App() {
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.brand}>OneNote AI</Text>
+            <Text style={styles.brand}>Fluxiary</Text>
             <Text style={styles.subtle}>One running note, indexed locally.</Text>
           </View>
           <View style={styles.statPill}>
