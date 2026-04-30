@@ -1,10 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import * as SQLite from 'expo-sqlite';
 import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from 'expo-speech-recognition';
-import {
   CalendarDays,
   CheckSquare,
   Lightbulb,
@@ -32,6 +28,9 @@ import {
   View,
 } from 'react-native';
 
+type SpeechRecognitionModule = typeof import('expo-speech-recognition');
+type SpeechRecognitionEventName = 'start' | 'end' | 'result' | 'error';
+
 type EntrySource = 'text' | 'voice' | 'demo';
 
 type Entry = {
@@ -56,7 +55,7 @@ type DbEntry = {
   summary: string;
 };
 
-const db = SQLite.openDatabaseSync('fluxiary.db');
+const db = SQLite.openDatabaseSync('jotwise.db');
 
 const colors = {
   ink: '#171717',
@@ -106,6 +105,34 @@ const demoNotes = [
   'Meeting with Anika: launch beta in May, test voice input on Android first, pricing can start at $6 per month.',
   'Idea #monetisation weekly memory digest, task extraction, encrypted sync, and export to Markdown.',
 ];
+
+let speechRecognitionModule: SpeechRecognitionModule | null | undefined;
+
+function getSpeechRecognitionModule() {
+  if (speechRecognitionModule !== undefined) return speechRecognitionModule;
+
+  try {
+    speechRecognitionModule = require('expo-speech-recognition') as SpeechRecognitionModule;
+  } catch {
+    speechRecognitionModule = null;
+  }
+
+  return speechRecognitionModule;
+}
+
+function useOptionalSpeechRecognitionEvent(
+  eventName: SpeechRecognitionEventName,
+  listener: (event: any) => void,
+) {
+  useEffect(() => {
+    const speech = getSpeechRecognitionModule();
+    const subscription = speech?.ExpoSpeechRecognitionModule.addListener(eventName, listener);
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [eventName, listener]);
+}
 
 function nowId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -293,16 +320,16 @@ export default function App() {
       });
   }, [loadEntries]);
 
-  useSpeechRecognitionEvent('start', () => {
+  useOptionalSpeechRecognitionEvent('start', () => {
     setRecognizing(true);
     setVoiceError('');
   });
 
-  useSpeechRecognitionEvent('end', () => {
+  useOptionalSpeechRecognitionEvent('end', () => {
     setRecognizing(false);
   });
 
-  useSpeechRecognitionEvent('result', (event) => {
+  useOptionalSpeechRecognitionEvent('result', (event) => {
     const transcript = event.results[0]?.transcript?.trim() ?? '';
     if (!transcript) return;
     setVoiceDraft(transcript);
@@ -312,7 +339,7 @@ export default function App() {
     }
   });
 
-  useSpeechRecognitionEvent('error', (event) => {
+  useOptionalSpeechRecognitionEvent('error', (event) => {
     setRecognizing(false);
     setVoiceError(event.message || event.error || 'Speech recognition failed.');
   });
@@ -392,14 +419,20 @@ export default function App() {
   );
 
   const startVoice = useCallback(async () => {
+    const speech = getSpeechRecognitionModule();
+    if (!speech) {
+      setVoiceError('Voice capture requires a development build. Text notes work in Expo Go.');
+      return;
+    }
+
     try {
-      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      const result = await speech.ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!result.granted) {
         setVoiceError('Microphone or speech recognition permission was not granted.');
         return;
       }
 
-      ExpoSpeechRecognitionModule.start({
+      speech.ExpoSpeechRecognitionModule.start({
         lang: 'en-US',
         interimResults: true,
         continuous: false,
@@ -414,7 +447,7 @@ export default function App() {
   }, []);
 
   const stopVoice = useCallback(() => {
-    ExpoSpeechRecognitionModule.stop();
+    getSpeechRecognitionModule()?.ExpoSpeechRecognitionModule.stop();
   }, []);
 
   const addDemoData = useCallback(async () => {
@@ -441,7 +474,7 @@ export default function App() {
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.brand}>Fluxiary</Text>
+            <Text style={styles.brand}>Jotwise</Text>
             <Text style={styles.subtle}>One running note, indexed locally.</Text>
           </View>
           <View style={styles.statPill}>

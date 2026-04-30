@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Fluxiary",
-    "slug": "fluxiary",
+    "name": "Jotwise",
+    "slug": "jotwise",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,8 +15,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Fluxiary uses the microphone to turn your voice captures into note text.",
-        "NSSpeechRecognitionUsageDescription": "Fluxiary uses speech recognition to transcribe your voice captures."
+        "NSMicrophoneUsageDescription": "Jotwise uses the microphone to turn your voice captures into note text.",
+        "NSSpeechRecognitionUsageDescription": "Jotwise uses speech recognition to transcribe your voice captures."
       }
     },
     "android": {
@@ -35,8 +35,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow Fluxiary to use the microphone for voice notes.",
-          "speechRecognitionPermission": "Allow Fluxiary to transcribe voice notes.",
+          "microphonePermission": "Allow Jotwise to use the microphone for voice notes.",
+          "speechRecognitionPermission": "Allow Jotwise to transcribe voice notes.",
           "androidSpeechServicePackages": [
             "com.google.android.googlequicksearchbox"
           ]

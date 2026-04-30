@@ -1,4 +1,4 @@
-# Fluxiary
+# Jotwise
 
 Local-first intelligent single-note prototype for iOS and Android.
 
@@ -44,10 +44,18 @@ Install dependencies:
 npm install
 ```
 
-Start Metro:
+Start Metro for Expo Go:
 
 ```bash
-npm start
+npm run dev
+```
+
+Scan that QR code with Expo Go. Text capture, SQLite storage, search, timeline, and insights run there.
+
+Start Metro for a native development build:
+
+```bash
+npm run dev:client
 ```
 
 Run Android dev build:
@@ -62,7 +70,7 @@ Run iOS dev build on macOS:
 npm run ios:dev
 ```
 
-Plain Expo Go can show most of the UI, but native speech recognition requires a development build because the app uses config plugins and native permissions.
+Native speech recognition requires a development build because the app uses config plugins and native permissions.
 
 ## Verification
 
