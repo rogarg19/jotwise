@@ -47,10 +47,18 @@ npm install
 Start Metro for Expo Go:
 
 ```bash
-npm run dev
+npm start
 ```
 
-Scan that QR code with Expo Go. Text capture, SQLite storage, search, timeline, and insights run there.
+Open Expo Go on your phone and scan the QR code from inside Expo Go on Android, or with the Camera app on iOS. Text capture, SQLite storage, search, timeline, and insights run there.
+
+If scanning the QR code does not open anything, your phone probably cannot reach the Metro server on the local network. Make sure the phone and computer are on the same Wi-Fi network, disable VPNs or firewalls that block local traffic, then restart Metro with:
+
+```bash
+npm run tunnel
+```
+
+The tunnel QR is slower, but it works across networks that block LAN discovery.
 
 Start Metro for a native development build:
 
