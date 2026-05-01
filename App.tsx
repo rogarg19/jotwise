@@ -1,5 +1,4 @@
 import { StatusBar } from 'expo-status-bar';
-import * as SQLite from 'expo-sqlite';
 import {
   CalendarDays,
   CheckSquare,
@@ -27,11 +26,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {
+  deleteEntryRecord,
+  insertEntryRecord,
+  loadEntryRecords,
+  prepareEntryStorage,
+  searchEntryRecords,
+} from './entryStorage';
+import type { DbEntry, EntrySource } from './entryStorage.types';
 
 type SpeechRecognitionModule = typeof import('expo-speech-recognition');
 type SpeechRecognitionEventName = 'start' | 'end' | 'result' | 'error';
-
-type EntrySource = 'text' | 'voice' | 'demo';
 
 type Entry = {
   id: string;
@@ -44,30 +49,19 @@ type Entry = {
   summary: string;
 };
 
-type DbEntry = {
-  id: string;
-  body: string;
-  source: EntrySource;
-  created_at: number;
-  day_key: string;
-  topics: string;
-  tasks: string;
-  summary: string;
-};
-
-const db = SQLite.openDatabaseSync('jotwise.db');
-
 const colors = {
-  ink: '#171717',
-  muted: '#707070',
-  faint: '#9B9B9B',
-  line: '#E6E2DC',
-  paper: '#FAF8F4',
+  ink: '#18181B',
+  muted: '#71717A',
+  faint: '#A1A1AA',
+  line: '#E4E4E7',
+  paper: '#F7F7F8',
   panel: '#FFFFFF',
-  accent: '#0F766E',
-  accentSoft: '#D7F1EC',
+  softPanel: '#F4F4F5',
+  accent: '#0D9488',
+  accentInk: '#0F766E',
+  accentSoft: '#CCFBF1',
   amber: '#B45309',
-  rose: '#B91C1C',
+  rose: '#DC2626',
   blue: '#2563EB',
 };
 
@@ -261,37 +255,6 @@ function getDaySummary(entries: Entry[]) {
   };
 }
 
-async function prepareDatabase() {
-  await db.execAsync(`
-    PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS entries (
-      id TEXT PRIMARY KEY NOT NULL,
-      body TEXT NOT NULL,
-      source TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      day_key TEXT NOT NULL,
-      topics TEXT NOT NULL,
-      tasks TEXT NOT NULL,
-      summary TEXT NOT NULL
-    );
-    CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
-      body,
-      summary,
-      topics,
-      content='entries',
-      content_rowid='rowid'
-    );
-    CREATE TRIGGER IF NOT EXISTS entries_ai AFTER INSERT ON entries BEGIN
-      INSERT INTO entries_fts(rowid, body, summary, topics)
-      VALUES (new.rowid, new.body, new.summary, new.topics);
-    END;
-    CREATE TRIGGER IF NOT EXISTS entries_ad AFTER DELETE ON entries BEGIN
-      INSERT INTO entries_fts(entries_fts, rowid, body, summary, topics)
-      VALUES('delete', old.rowid, old.body, old.summary, old.topics);
-    END;
-  `);
-}
-
 export default function App() {
   const [ready, setReady] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -305,14 +268,12 @@ export default function App() {
   const queryRef = useRef('');
 
   const loadEntries = useCallback(async () => {
-    const rows = await db.getAllAsync<DbEntry>(
-      'SELECT * FROM entries ORDER BY created_at DESC LIMIT 500',
-    );
+    const rows = await loadEntryRecords();
     setEntries(rows.map(mapEntry));
   }, []);
 
   useEffect(() => {
-    prepareDatabase()
+    prepareEntryStorage()
       .then(loadEntries)
       .then(() => setReady(true))
       .catch((error) => {
@@ -353,18 +314,16 @@ export default function App() {
       const topics = extractTopics(clean);
       const tasks = extractTasks(clean);
 
-      await db.runAsync(
-        `INSERT INTO entries (id, body, source, created_at, day_key, topics, tasks, summary)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        nowId(),
-        clean,
+      await insertEntryRecord({
+        id: nowId(),
+        body: clean,
         source,
-        createdAt,
-        dayKeyFromTimestamp(createdAt),
-        JSON.stringify(topics),
-        JSON.stringify(tasks),
-        summarize(clean),
-      );
+        created_at: createdAt,
+        day_key: dayKeyFromTimestamp(createdAt),
+        topics: JSON.stringify(topics),
+        tasks: JSON.stringify(tasks),
+        summary: summarize(clean),
+      });
       setDraft('');
       await loadEntries();
     },
@@ -373,7 +332,7 @@ export default function App() {
 
   const deleteEntry = useCallback(
     async (id: string) => {
-      await db.runAsync('DELETE FROM entries WHERE id = ?', id);
+      await deleteEntryRecord(id);
       await loadEntries();
     },
     [loadEntries],
@@ -391,28 +350,12 @@ export default function App() {
       }
 
       try {
-        const rows = await db.getAllAsync<DbEntry>(
-          `SELECT entries.*
-           FROM entries_fts
-           JOIN entries ON entries_fts.rowid = entries.rowid
-           WHERE entries_fts MATCH ?
-           ORDER BY bm25(entries_fts), entries.created_at DESC
-           LIMIT 100`,
-          ftsQuery,
-        );
+        const rows = await searchEntryRecords(nextQuery, ftsQuery);
         if (queryRef.current === nextQuery) {
           setEntries(rows.map(mapEntry));
         }
-      } catch {
-        const rows = await db.getAllAsync<DbEntry>(
-          'SELECT * FROM entries WHERE body LIKE ? OR summary LIKE ? OR topics LIKE ? ORDER BY created_at DESC LIMIT 100',
-          `%${nextQuery}%`,
-          `%${nextQuery}%`,
-          `%${nextQuery}%`,
-        );
-        if (queryRef.current === nextQuery) {
-          setEntries(rows.map(mapEntry));
-        }
+      } catch (error) {
+        Alert.alert('Search error', error instanceof Error ? error.message : String(error));
       }
     },
     [loadEntries],
@@ -464,6 +407,8 @@ export default function App() {
   const grouped = useMemo(() => groupByDay(visibleEntries), [visibleEntries]);
   const allTopics = useMemo(() => uniqueTop(entries.flatMap((entry) => entry.topics), 12), [entries]);
   const allTasks = useMemo(() => entries.flatMap((entry) => entry.tasks).slice(0, 8), [entries]);
+  const groupedEntries = useMemo(() => Object.entries(grouped), [grouped]);
+  const canSave = draft.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -475,10 +420,10 @@ export default function App() {
         <View style={styles.header}>
           <View>
             <Text style={styles.brand}>Jotwise</Text>
-            <Text style={styles.subtle}>One running note, indexed locally.</Text>
+            <Text style={styles.subtle}>A quiet trail for everything worth keeping.</Text>
           </View>
           <View style={styles.statPill}>
-            <Sparkles size={15} color={colors.accent} />
+            <Sparkles size={15} color={colors.accentInk} />
             <Text style={styles.statText}>{entries.length}</Text>
           </View>
         </View>
@@ -504,7 +449,7 @@ export default function App() {
           <View style={styles.composer}>
             <TextInput
               multiline
-              placeholder="Dump a thought, meeting note, task, idea..."
+              placeholder="Write a note..."
               placeholderTextColor={colors.faint}
               value={draft}
               onChangeText={setDraft}
@@ -524,9 +469,13 @@ export default function App() {
                   <Mic size={20} color={colors.accent} />
                 )}
               </Pressable>
-              <Pressable onPress={() => addEntry(draft)} style={styles.primaryButton}>
+              <Pressable
+                disabled={!canSave}
+                onPress={() => addEntry(draft)}
+                style={[styles.primaryButton, !canSave && styles.primaryButtonDisabled]}
+              >
                 <Plus size={18} color="#FFFFFF" />
-                <Text style={styles.primaryText}>Capture</Text>
+                <Text style={styles.primaryText}>Save</Text>
               </Pressable>
             </View>
           </View>
@@ -603,14 +552,14 @@ export default function App() {
         )}
 
         <ScrollView contentContainerStyle={styles.feed} keyboardShouldPersistTaps="handled">
-          {!ready && <Text style={styles.emptyText}>Preparing local note index...</Text>}
+          {!ready && <Text style={styles.emptyText}>Preparing notes...</Text>}
 
           {ready && entries.length === 0 && (
             <View style={styles.emptyState}>
               <Square size={28} color={colors.accent} />
               <Text style={styles.emptyTitle}>Start with one thought.</Text>
               <Text style={styles.emptyText}>
-                Capture anything. The app will group it by date, index it, extract topics, and surface tasks.
+                Save notes as they come. The trail stays simple and easy to scan.
               </Text>
               <Pressable onPress={addDemoData} style={styles.secondaryButton}>
                 <Text style={styles.secondaryText}>Add sample notes</Text>
@@ -618,52 +567,73 @@ export default function App() {
             </View>
           )}
 
-          {Object.entries(grouped).map(([day, dayEntries]) => {
-            const daySummary = getDaySummary(dayEntries);
-            return (
-              <View key={day} style={styles.daySection}>
-                <View style={styles.dayHeader}>
-                  <View>
-                    <Text style={styles.dayTitle}>{formatDay(day)}</Text>
-                    <Text style={styles.daySummary}>{daySummary.line}</Text>
-                  </View>
-                </View>
-
-                {daySummary.tasks.length > 0 && (
-                  <View style={styles.dayTasks}>
-                    {daySummary.tasks.slice(0, 2).map((task, index) => (
-                      <View key={`${task}-${index}`} style={styles.taskRow}>
-                        <CheckSquare size={14} color={colors.amber} />
-                        <Text style={styles.taskText}>{task}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {dayEntries.map((entry) => (
-                  <View key={entry.id} style={styles.entry}>
-                    <View style={styles.entryMeta}>
+          {ready && mode === 'capture' && entries.length > 0 && (
+            <View style={styles.captureTrail}>
+              {entries.map((entry) => (
+                <View key={entry.id} style={styles.trailRow}>
+                  <View style={styles.trailDot} />
+                  <View style={styles.trailEntry}>
+                    <View style={styles.trailMeta}>
                       <Text style={styles.time}>{formatTime(entry.createdAt)}</Text>
-                      <Text style={styles.source}>{entry.source}</Text>
                       <Pressable onPress={() => deleteEntry(entry.id)} hitSlop={10}>
                         <Trash2 size={15} color={colors.faint} />
                       </Pressable>
                     </View>
                     <Text style={styles.entryText}>{entry.body}</Text>
-                    {entry.topics.length > 0 && (
-                      <View style={styles.chipWrap}>
-                        {entry.topics.map((topic) => (
-                          <View key={topic} style={styles.topicChip}>
-                            <Text style={styles.topicText}>{topic}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {ready && mode !== 'capture'
+            ? groupedEntries.map(([day, dayEntries]) => {
+                const daySummary = getDaySummary(dayEntries);
+                return (
+                  <View key={day} style={styles.daySection}>
+                    <View style={styles.dayHeader}>
+                      <View>
+                        <Text style={styles.dayTitle}>{formatDay(day)}</Text>
+                        <Text style={styles.daySummary}>{daySummary.line}</Text>
+                      </View>
+                    </View>
+
+                    {daySummary.tasks.length > 0 && (
+                      <View style={styles.dayTasks}>
+                        {daySummary.tasks.slice(0, 2).map((task, index) => (
+                          <View key={`${task}-${index}`} style={styles.taskRow}>
+                            <CheckSquare size={14} color={colors.amber} />
+                            <Text style={styles.taskText}>{task}</Text>
                           </View>
                         ))}
                       </View>
                     )}
+
+                    {dayEntries.map((entry) => (
+                      <View key={entry.id} style={styles.entry}>
+                        <View style={styles.entryMeta}>
+                          <Text style={styles.time}>{formatTime(entry.createdAt)}</Text>
+                          <Text style={styles.source}>{entry.source}</Text>
+                          <Pressable onPress={() => deleteEntry(entry.id)} hitSlop={10}>
+                            <Trash2 size={15} color={colors.faint} />
+                          </Pressable>
+                        </View>
+                        <Text style={styles.entryText}>{entry.body}</Text>
+                        {entry.topics.length > 0 && (
+                          <View style={styles.chipWrap}>
+                            {entry.topics.map((topic) => (
+                              <View key={topic} style={styles.topicChip}>
+                                <Text style={styles.topicText}>{topic}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
-            );
-          })}
+                );
+              })
+            : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -682,13 +652,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 760,
     paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
   brand: {
     color: colors.ink,
-    fontSize: 28,
+    fontSize: 27,
     fontWeight: '800',
   },
   subtle: {
@@ -702,21 +675,24 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexDirection: 'row',
     gap: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 7,
   },
   statText: {
-    color: colors.accent,
+    color: colors.accentInk,
     fontSize: 14,
     fontWeight: '800',
   },
   tabs: {
     backgroundColor: colors.panel,
     borderColor: colors.line,
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 6,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 760,
     marginHorizontal: 18,
     padding: 5,
   },
@@ -728,22 +704,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   activeTab: {
-    backgroundColor: '#EFEDEA',
+    backgroundColor: colors.softPanel,
   },
   composer: {
     backgroundColor: colors.panel,
-    borderBottomColor: colors.line,
-    borderBottomWidth: 1,
-    borderTopColor: colors.line,
-    borderTopWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 760,
+    marginHorizontal: 18,
     marginTop: 12,
-    padding: 14,
+    padding: 16,
   },
   input: {
     color: colors.ink,
-    fontSize: 18,
-    lineHeight: 26,
-    minHeight: 116,
+    fontSize: 17,
+    lineHeight: 25,
+    minHeight: 128,
   },
   voicePreview: {
     color: colors.accent,
@@ -764,8 +743,8 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: 'center',
-    backgroundColor: colors.accentSoft,
-    borderRadius: 11,
+    backgroundColor: colors.softPanel,
+    borderRadius: 8,
     height: 44,
     justifyContent: 'center',
     width: 44,
@@ -776,12 +755,15 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignItems: 'center',
     backgroundColor: colors.accent,
-    borderRadius: 11,
+    borderRadius: 8,
     flexDirection: 'row',
     gap: 8,
     height: 44,
     justifyContent: 'center',
     paddingHorizontal: 18,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.42,
   },
   primaryText: {
     color: '#FFFFFF',
@@ -792,10 +774,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.panel,
     borderColor: colors.line,
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 10,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 760,
     margin: 18,
     paddingHorizontal: 12,
   },
@@ -806,14 +791,17 @@ const styles = StyleSheet.create({
     height: 48,
   },
   dayRail: {
+    alignSelf: 'center',
     flexGrow: 0,
     marginTop: 14,
     paddingHorizontal: 18,
+    width: '100%',
+    maxWidth: 760,
   },
   dayChip: {
     backgroundColor: colors.panel,
     borderColor: colors.line,
-    borderRadius: 999,
+    borderRadius: 8,
     borderWidth: 1,
     height: 38,
     justifyContent: 'center',
@@ -835,8 +823,11 @@ const styles = StyleSheet.create({
   insightPanel: {
     backgroundColor: colors.panel,
     borderColor: colors.line,
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: 1,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 760,
     margin: 18,
     padding: 14,
   },
@@ -857,6 +848,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   feed: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 760,
     padding: 18,
     paddingBottom: 42,
   },
@@ -881,7 +875,7 @@ const styles = StyleSheet.create({
   secondaryButton: {
     backgroundColor: colors.panel,
     borderColor: colors.line,
-    borderRadius: 11,
+    borderRadius: 8,
     borderWidth: 1,
     marginTop: 18,
     paddingHorizontal: 16,
@@ -893,7 +887,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   daySection: {
-    marginBottom: 24,
+    marginBottom: 26,
   },
   dayHeader: {
     alignItems: 'center',
@@ -903,7 +897,7 @@ const styles = StyleSheet.create({
   },
   dayTitle: {
     color: colors.ink,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
   },
   daySummary: {
@@ -914,7 +908,7 @@ const styles = StyleSheet.create({
   dayTasks: {
     backgroundColor: '#FFF7ED',
     borderColor: '#FED7AA',
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
     gap: 7,
     marginBottom: 10,
@@ -923,10 +917,10 @@ const styles = StyleSheet.create({
   entry: {
     backgroundColor: colors.panel,
     borderColor: colors.line,
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
     marginBottom: 10,
-    padding: 13,
+    padding: 14,
   },
   entryMeta: {
     alignItems: 'center',
@@ -949,7 +943,37 @@ const styles = StyleSheet.create({
   entryText: {
     color: colors.ink,
     fontSize: 16,
-    lineHeight: 23,
+    lineHeight: 24,
+  },
+  captureTrail: {
+    gap: 0,
+    paddingTop: 4,
+  },
+  trailRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingBottom: 12,
+  },
+  trailDot: {
+    backgroundColor: colors.accent,
+    borderRadius: 5,
+    height: 10,
+    marginTop: 18,
+    width: 10,
+  },
+  trailEntry: {
+    backgroundColor: colors.panel,
+    borderColor: colors.line,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    padding: 14,
+  },
+  trailMeta: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   chipWrap: {
     flexDirection: 'row',
