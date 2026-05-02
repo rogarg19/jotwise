@@ -2,7 +2,7 @@ import * as SQLite from 'expo-sqlite';
 
 import type { DbEntry } from './entryStorage.types';
 
-const db = SQLite.openDatabaseSync('jotwise.db');
+const db = SQLite.openDatabaseSync('bodhinote.db');
 
 export async function prepareEntryStorage() {
   await db.execAsync(`

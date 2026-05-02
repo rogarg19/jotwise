@@ -1,6 +1,6 @@
 import type { DbEntry } from './entryStorage.types';
 
-const STORAGE_KEY = 'jotwise.entries.v1';
+const STORAGE_KEY = 'bodhinote.entries.v1';
 
 function getLocalStorage(): Storage | null {
   try {

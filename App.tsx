@@ -419,7 +419,7 @@ export default function App() {
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.brand}>Jotwise</Text>
+            <Text style={styles.brand}>BodhiNote</Text>
             <Text style={styles.subtle}>A quiet trail for everything worth keeping.</Text>
           </View>
           <View style={styles.statPill}>

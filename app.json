@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Jotwise",
-    "slug": "jotwise",
+    "name": "BodhiNote",
+    "slug": "bodhinote",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,8 +15,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Jotwise uses the microphone to turn your voice captures into note text.",
-        "NSSpeechRecognitionUsageDescription": "Jotwise uses speech recognition to transcribe your voice captures."
+        "NSMicrophoneUsageDescription": "BodhiNote uses the microphone to turn your voice captures into note text.",
+        "NSSpeechRecognitionUsageDescription": "BodhiNote uses speech recognition to transcribe your voice captures."
       }
     },
     "android": {
@@ -35,8 +35,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow Jotwise to use the microphone for voice notes.",
-          "speechRecognitionPermission": "Allow Jotwise to transcribe voice notes.",
+          "microphonePermission": "Allow BodhiNote to use the microphone for voice notes.",
+          "speechRecognitionPermission": "Allow BodhiNote to transcribe voice notes.",
           "androidSpeechServicePackages": [
             "com.google.android.googlequicksearchbox"
           ]

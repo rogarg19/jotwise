@@ -1,4 +1,4 @@
-# Jotwise
+# BodhiNote
 
 Local-first intelligent single-note prototype for iOS and Android.
 
